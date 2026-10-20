@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive,nosnippet">
+  <meta name="referrer" content="no-referrer">
+  <title>TLC Black Friday — Private Dashboard</title>
+  <style>
+    :root { color-scheme: dark; --red:#ef1b23; --cream:#f3eadc; --ink:#0e0e0d; --muted:#aaa49a; }
+    * { box-sizing: border-box; }
+    body { min-height:100svh; margin:0; display:grid; place-items:center; padding:22px; overflow:hidden;
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#fff;
+      background:radial-gradient(circle at 85% 0%,rgba(239,27,35,.28),transparent 34rem),linear-gradient(145deg,#0e0e0d,#1a1917); }
+    body::after { content:"BF"; position:fixed; right:-.06em; bottom:-.22em; color:rgba(255,255,255,.035);
+      font-size:min(52vw,620px); line-height:1; font-weight:950; letter-spacing:-.12em; pointer-events:none; }
+    main { width:min(470px,100%); position:relative; z-index:1; }
+    .brand { display:flex; align-items:center; gap:13px; margin:0 0 22px; }
+    .mark { width:46px; height:46px; display:grid; place-items:center; border-radius:50%; background:var(--red);
+      font-weight:950; letter-spacing:-.08em; }
+    .eyebrow { color:var(--muted); font-size:10px; font-weight:850; letter-spacing:.17em; text-transform:uppercase; }
+    .name { margin-top:4px; font-weight:850; }
+    .card { padding:clamp(25px,7vw,42px); border:1px solid rgba(255,255,255,.12); border-radius:22px;
+      background:rgba(255,255,255,.045); box-shadow:0 30px 100px rgba(0,0,0,.45); backdrop-filter:blur(16px); }
+    h1 { margin:0; color:var(--cream); font-size:clamp(35px,9vw,56px); line-height:.93; letter-spacing:-.065em;
+      text-transform:uppercase; font-weight:950; }
+    p { margin:17px 0 23px; color:#c9c3b9; font-size:13px; line-height:1.55; }
+    label { display:block; margin:0 0 8px; color:var(--muted); font-size:10px; font-weight:900; letter-spacing:.14em; text-transform:uppercase; }
+    .row { display:grid; grid-template-columns:1fr auto; gap:9px; }
+    input { width:100%; min-width:0; border:1px solid rgba(255,255,255,.14); border-radius:12px; padding:14px 15px;
+      outline:none; background:#151513; color:#fff; font:inherit; }
+    input:focus { border-color:var(--red); box-shadow:0 0 0 3px rgba(239,27,35,.15); }
+    button { border:0; border-radius:12px; padding:0 18px; background:var(--red); color:#fff; font:inherit; font-weight:900; cursor:pointer; }
+    button:hover { background:#ff2b33; }
+    button:disabled { opacity:.55; cursor:wait; }
+    .note { min-height:19px; margin-top:11px; color:#ff7278; font-size:12px; font-weight:700; }
+    .secure { display:flex; gap:8px; align-items:center; margin-top:20px; color:#77736d; font-size:10px; }
+    .secure::before { content:""; width:7px; height:7px; border-radius:50%; background:#46c878; box-shadow:0 0 0 4px rgba(70,200,120,.1); }
+    @media (max-width:480px) { .row { grid-template-columns:1fr; } button { min-height:48px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand"><div class="mark">TLC</div><div><div class="eyebrow">The Lad Collective</div><div class="name">Black Friday 2026</div></div></div>
+    <section class="card">
+      <h1>Daily<br>Control Room</h1>
+      <p>Private trading dashboard. Enter the team passphrase to decrypt the forecast, product, warehouse and flash-deal views in this browser.</p>
+      <form id="unlockForm">
+        <label for="passphrase">Team passphrase</label>
+        <div class="row"><input id="passphrase" type="password" autocomplete="current-password" required autofocus><button id="unlockButton" type="submit">Unlock</button></div>
+        <div class="note" id="message" role="status" aria-live="polite"></div>
+      </form>
+      <div class="secure">Dashboard data is AES-256-GCM encrypted at rest</div>
+    </section>
+  </main>
+  <script>
+    const form = document.getElementById('unlockForm');
+    const input = document.getElementById('passphrase');
+    const button = document.getElementById('unlockButton');
+    const message = document.getElementById('message');
+    const decode = value => Uint8Array.from(atob(value), char => char.charCodeAt(0));
+
+    async function decryptDashboard(passphrase) {
+      const response = await fetch('./payload.json', { cache: 'no-store' });
+      if (!response.ok) throw new Error('Dashboard payload is unavailable.');
+      const payload = await response.json();
+      const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+      const key = await crypto.subtle.deriveKey(
+        { name:'PBKDF2', salt:decode(payload.salt), iterations:payload.iterations, hash:'SHA-256' },
+        keyMaterial,
+        { name:'AES-GCM', length:256 },
+        false,
+        ['decrypt']
+      );
+      const plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv:decode(payload.iv) }, key, decode(payload.ciphertext));
+      return new TextDecoder().decode(plain);
+    }
+
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      button.disabled = true;
+      button.textContent = 'Opening…';
+      message.textContent = '';
+      try {
+        const html = await decryptDashboard(input.value);
+        input.value = '';
+        document.open();
+        document.write(html);
+        document.close();
+      } catch (error) {
+        message.textContent = error.message === 'Dashboard payload is unavailable.' ? error.message : 'That passphrase didn’t work.';
+        button.disabled = false;
+        button.textContent = 'Unlock';
+        input.select();
+      }
+    });
+  </script>
+</body>
+</html>
