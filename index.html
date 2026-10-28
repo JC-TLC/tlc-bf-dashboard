@@ -44,7 +44,7 @@
     <div class="brand"><div class="mark">TLC</div><div><div class="eyebrow">The Lad Collective</div><div class="name">Black Friday 2026</div></div></div>
     <section class="card">
       <h1>Daily<br>Control Room</h1>
-      <p>Private trading dashboard. Enter the team passphrase to decrypt the forecast, product, warehouse and flash-deal views in this browser.</p>
+      <p>Private trading dashboard. Enter the team passphrase once and this browser will remember it on this device.</p>
       <form id="unlockForm">
         <label for="passphrase">Team passphrase</label>
         <div class="row"><input id="passphrase" type="password" autocomplete="current-password" required autofocus><button id="unlockButton" type="submit">Unlock</button></div>
@@ -58,7 +58,23 @@
     const input = document.getElementById('passphrase');
     const button = document.getElementById('unlockButton');
     const message = document.getElementById('message');
+    const storageKey = 'tlc-bf-dashboard-passphrase-v1';
     const decode = value => Uint8Array.from(atob(value), char => char.charCodeAt(0));
+
+    function readSavedPassphrase() {
+      try { return localStorage.getItem(storageKey) || ''; }
+      catch { return ''; }
+    }
+
+    function savePassphrase(passphrase) {
+      try { localStorage.setItem(storageKey, passphrase); }
+      catch { /* The dashboard still opens when browser storage is unavailable. */ }
+    }
+
+    function clearSavedPassphrase() {
+      try { localStorage.removeItem(storageKey); }
+      catch { /* Nothing else to clear. */ }
+    }
 
     async function decryptDashboard(passphrase) {
       const response = await fetch('./payload.json', { cache: 'no-store' });
@@ -76,24 +92,38 @@
       return new TextDecoder().decode(plain);
     }
 
-    form.addEventListener('submit', async event => {
-      event.preventDefault();
+    async function openDashboard(passphrase, { remember = false, automatic = false } = {}) {
       button.disabled = true;
       button.textContent = 'Opening…';
-      message.textContent = '';
+      message.textContent = automatic ? 'Opening saved dashboard…' : '';
       try {
-        const html = await decryptDashboard(input.value);
+        const html = await decryptDashboard(passphrase);
+        if (remember) savePassphrase(passphrase);
         input.value = '';
         document.open();
         document.write(html);
         document.close();
       } catch (error) {
-        message.textContent = error.message === 'Dashboard payload is unavailable.' ? error.message : 'That passphrase didn’t work.';
+        if (automatic) clearSavedPassphrase();
+        message.textContent = error.message === 'Dashboard payload is unavailable.'
+          ? error.message
+          : automatic
+            ? 'The saved passphrase needs updating. Enter it again.'
+            : 'That passphrase didn’t work.';
         button.disabled = false;
         button.textContent = 'Unlock';
-        input.select();
+        input.focus();
+        if (!automatic) input.select();
       }
+    }
+
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      openDashboard(input.value, { remember: true });
     });
+
+    const savedPassphrase = readSavedPassphrase();
+    if (savedPassphrase) openDashboard(savedPassphrase, { automatic: true });
   </script>
 </body>
 </html>
